@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask
 from flask_restful import Api, Resource, reqparse, abort, fields, marshal_with
 from flask_sqlalchemy import SQLAlchemy
 from flask_httpauth import HTTPBasicAuth
@@ -10,6 +10,7 @@ api = Api(app)
 CORS(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
+SECRET_KEY = os.environ.get('SECRET_KEY')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JSON_SORT_KEYS'] = False
 db = SQLAlchemy(app)
@@ -33,9 +34,15 @@ class User(db.Model):
     def __repr__(self) -> str:
         return f"User('{self.name}')"
     
+USER_DATA = {
+    'admin': SECRET_KEY
+}
 #db.create_all()
 
 
+user_args = reqparse.RequestParser()
+user_args.add_argument('name', type=str)
+user_args.add_argument('password', type=str)
 
 team_put_args = reqparse.RequestParser()
 team_put_args.add_argument('name', type=str, help='Team name required', required=True)
@@ -57,13 +64,25 @@ resource_fields = {
     'division': fields.String
 }
 
+user_fields = {
+    'id': fields.Integer,
+    'name': fields.String,
+    'password': fields.String
+}
+
 @auth.verify_password
 def verify(username, password):
-    user = User.query.filter_by(name=username).first()
-    if not user:
+    if not (username and password):
         return False
-    user_password = user.password
-    return user_password == password
+    return USER_DATA.get(username) == password
+
+class UserR(Resource):
+    @marshal_with(user_fields)
+    def delete(self, user_id):
+        result = User.query.filter_by(id=user_id).first()
+        db.session.delete(result)
+        db.session.commit()
+        return {'message': 'deleted'}
 
 class Team(Resource):
     @marshal_with(resource_fields)
@@ -114,6 +133,7 @@ class Team(Resource):
         return {'message': 'Team deleted'}
 
 api.add_resource(Team, '/team/<int:team_id>')
+api.add_resource(UserR, '/user/<int:user_id>')
 
 
 
